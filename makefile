@@ -1,12 +1,33 @@
 # Compiler Flags
-CFLAGS = -Wall -ansi -pedantic -std=c89
+CC = gcc
+CFLAGS = -Wall -ansi -pedantic -std=c89 -Iinclude
 
+# Directories
+OBJ_DIR = obj
+SRC_DIR = src
+OUT_DIR = output
+INCLUDE_DIR = include
+DEP_FILE = dependencies.d  # Dependency file
 
-assembler: assembler.o pre_assembler.o
-	gcc $(CFLAGS) assembler.o pre_assembler.o -o assembler
+# Find all source files and corresponding object files
+SRC_FILES = $(wildcard $(SRC_DIR)/*.c)
+OBJ_FILES = $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.o, $(SRC_FILES))
 
-assembler.o: assembler.c pre_assembler.h
-	gcc $(CFLAGS) -c assembler.c -o assembler.o
+# The target executable
+assembler: $(OBJ_FILES)
+	$(CC) $(CFLAGS) $^ -o $@
 
-pre_assembler.o: pre_assembler.c pre_assembler.h
-	gcc $(CFLAGS) -c pre_assembler.c -o pre_assembler.o
+# Pattern rule for creating .o files from .c files
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Include the dependency file
+-include $(DEP_FILE)
+
+# Generate dependencies for each source file
+$(DEP_FILE): $(SRC_DIR)/*.c
+	$(CC) $(CFLAGS) -MM $^ > $(DEP_FILE)
+
+# Clean up build files
+clean:
+	rm -rf $(OBJ_DIR)/*.o $(OUT_DIR)/*.am $(OUT_DIR)/*.ob $(OUT_DIR)/*.ent $(OUT_DIR)/*.ext assembler $(DEP_FILE)
