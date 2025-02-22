@@ -6,10 +6,10 @@
 #include <String.h>
 #include <stdlib.h>
 
-extern char *inputExt;
-extern char *extendendInputExt;
-extern char *readMode;
-extern char *writeMode;
+extern char *inputExt; /* file extension for input files */
+extern char *extendedInputExt; /* file extension for extended input files */
+extern char *readMode; /* flag to open file in read mode */
+extern char *writeMode; /* flag to topen file in write mode */
 
 /**
  * Concatinates 2 strings and returns the result without changing the original strings
@@ -30,13 +30,13 @@ FILE *open_file(char *filename, char *extension, char *mode);
 
 /**
  * Allocates the content of a file to a buffer
- * @param file the file pointer
+ * @param inputFile the file pointer
  * @param filename the file name
  * @param extension the file extension
  * @param fileSize the file size pointer
  * @return the content buffer
  */
-char *get_file_content(FILE *file, char *filename, char *extension, long *fileSize);
+char *get_file_content(FILE *inputFile, char *filename, char *extension, long *fileSize);
 
 /**
  * Removes a file from the project

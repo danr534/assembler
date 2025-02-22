@@ -1,11 +1,11 @@
 #include "pre_assembler.h"
-#include "macros_list.h"
-#include "utils.h"
 
 int *translateIndexes;
 int numLines;
 int isError;
-const char *instructions[] = {"mov", "cmp", "add", "sub", "lea", "clr", "not", "inc", "dec", "jump", "bne", "jsr", "red", "prn", "rts", "stop"};
+macroNode *macros = NULL; 
+
+const char *operations[] = {"mov", "cmp", "add", "sub", "lea", "clr", "not", "inc", "dec", "jmp", "bne", "jsr", "red", "prn", "rts", "stop"};
 const char *directives[] = {".data", ".string", ".entry", ".extern"};
 
 const static char *macro_start = "mcro"; /* start of a macro decleration*/
@@ -36,9 +36,10 @@ int name_error(char *cursor, int startIndex, char *inputFilename);
  * @param startIndex the index of the line with the macro defintion
  * @param totalLines the total lines inside the macro until now
  * @param inputFilename the full name of the input file
+ * @param am_counter line counter of the output file
  * @return 1 if a the line is a valid ending of the macro, 0 otherwise
  */
-int is_macro_end(char **cursorPtr, int startIndex, int totalLines, char *inputFilename);
+int is_macro_end(char **cursorPtr, int startIndex, int totalLines, char *inputFilename, int *am_counter);
 
 /**
  * maps a macro call in the input file to its corresponding macro content/block in the output file
@@ -64,20 +65,18 @@ void expand_macros(char *buffer, long inputFileSize, char *filename) {
     char *cursor = buffer; /* buffer pointer of the current line */
     int as_counter = 1; /* line counter of the input file */
     int am_counter = 1; /* line counter of the output file */
-    macroNode *macros = NULL; /* list of the macros found until now */
+    
     macroNode *macro = NULL; /* temporary macro pointer */
-    FILE *outputFile = open_file(filename, extendendInputExt, writeMode); /* output file pointer */
+    FILE *outputFile = open_file(filename, extendedInputExt, writeMode); /* output file pointer */
     char *inputFilename = combine_strings(filename, inputExt); /* full input file name*/
-
     long numLinesUpperBound = inputFileSize * inputFileSize; /* upper bound for the number of lines in the output file */
-
     /* initilize external variables */
     isError = 0;
     translateIndexes = (int *)malloc(numLinesUpperBound * sizeof(int));
 
     /* check if memory allocation failed */
     if(translateIndexes == NULL) {
-        printf("Error in file '%s': ", filename);
+        fprintf(stderr, "Error in file '%s': ", filename);
         perror("");
         isError = 1;
     }
@@ -100,11 +99,10 @@ void expand_macros(char *buffer, long inputFileSize, char *filename) {
 
     /* free dynamic memory */
     free(buffer);
-    free_macros(macros);
 
     /* close the output file and remove it if an error was found */
     fclose(outputFile);
-    if(isError) remove_file(filename, extendendInputExt);
+    if(isError) remove_file(filename, extendedInputExt);
 
 }
 
@@ -137,17 +135,18 @@ void add_macro(char **cursorPtr, int *as_counter, int *am_counter, macroNode **m
     nameStart = *cursorPtr;
     
     /* save the macro's name */
-    while(**cursorPtr != '\n') (*cursorPtr)++;
+    while(**cursorPtr != ' ' && **cursorPtr != '\t' && **cursorPtr != '\n') (*cursorPtr)++;
     nameLen = *cursorPtr - nameStart;
     name = (char *)malloc((nameLen + 1) * sizeof(char));
     strncpy(name, nameStart, nameLen);
     name[nameLen] = '\0';
-    contentStart = ++(*cursorPtr);
 
+    while(**cursorPtr != '\n') (*cursorPtr)++;
+    contentStart = ++(*cursorPtr);
 
     /* scan each line until a valid macro ending line */
     while(1) {
-        if(is_macro_end(cursorPtr, *as_counter, totalLines, inputFilename)) break;
+        if(is_macro_end(cursorPtr, *as_counter, totalLines, inputFilename, am_counter)) break;
         while(**cursorPtr != '\n' && **cursorPtr != '\0') {
             (*cursorPtr)++;
             contentLen++;
@@ -158,7 +157,7 @@ void add_macro(char **cursorPtr, int *as_counter, int *am_counter, macroNode **m
         (*cursorPtr)++;
         
     }
-    
+
     /* save the macro's content */
     content = (char *)malloc((contentLen + 1) * sizeof(char));
     strncpy(content, contentStart, contentLen);
@@ -172,35 +171,41 @@ void add_macro(char **cursorPtr, int *as_counter, int *am_counter, macroNode **m
 
 int name_error(char *cursor, int startIndex, char *inputFilename) {
     int i;
-
+    char tmp;
     /* check if the macro's name is an instruction */
-    for(i = 0; i < NUM_INSTRUCTIONS; i++) {
-        if(!strncmp(cursor, instructions[i], strlen(instructions[i]))) {
-            printf("Error in file '%s' at line %d: macro name is an instruction.\n", inputFilename, startIndex);
-            return 1;
+    for(i = 0; i < NUM_OPERATIONS; i++) {
+        if(!strncmp(cursor, operations[i], strlen(operations[i]))) {
+            tmp = *(cursor + strlen(operations[i]));
+            if(tmp == ' ' || tmp == '\t' || tmp == '\n' || tmp == '\0' ) {
+                fprintf(stderr, "Error in file '%s' at line %d: macro name is an instruction.\n", inputFilename, startIndex);
+                return 1;
+            }
         }
     }
 
     /* check if the macro's name is a directive */
     for(i = 0; i < NUM_DIRECTIVES; i++) {
         if(!strncmp(cursor, directives[i], strlen(directives[i]))) {
-            printf("Error in file '%s' at line %d: macro name is a directive.\n", inputFilename ,startIndex);
-            return 1;
+            tmp = *(cursor + strlen(directives[i]));
+            if(tmp == ' ' || tmp == '\t' || tmp == '\n' || tmp == '\0') {
+                fprintf(stderr, "Error in file '%s' at line %d: macro name is a directive.\n", inputFilename ,startIndex);
+                return 1;
+            }
         }
     }
     
-    /* check if the line contains any more characters */
-    while(*cursor != ' ' && *cursor != '\t' && *cursor != '\n') cursor++;
-    if(*cursor != '\n') {
-        
-        printf("Error in file '%s' at line %d: extra characters after macro definition.\n", inputFilename, startIndex);
+    /* check if the line contains any more non white characters */
+    while(*cursor != ' ' && *cursor != '\t' && *cursor != '\n' && *cursor != '\0') cursor++;
+    while(*cursor == ' ' || *cursor == '\t') cursor++;
+    if(*cursor != '\n' && *cursor != '\0') {
+        fprintf(stderr, "Error in file '%s' at line %d: extraneous text after macro definition.\n", inputFilename, startIndex);
         return 1;
     }
-
+    
     return 0;
 }
 
-int is_macro_end(char **cursorPtr, int startIndex, int totalLines, char *inputFilename) {
+int is_macro_end(char **cursorPtr, int startIndex, int totalLines, char *inputFilename, int *am_counter) {
     char *cursor = *cursorPtr;
 
     /* skip white characters*/
@@ -210,15 +215,16 @@ int is_macro_end(char **cursorPtr, int startIndex, int totalLines, char *inputFi
     /* check if the line prefix is a valid macro ending */
     if(!strncmp(cursor, macro_end, strlen(macro_end))) {
         cursor += strlen(macro_end);
-
-        /* check if the line doesn't contain any more characters */
+        while(*cursor == ' ' || *cursor == '\t') cursor++;
+        /* check if the line contains any more non white characters */
         if(*cursor != '\n' && *cursor != '\0') {
-            printf("Error in file '%s' at line %d: extra characters after macro end.\n", inputFilename ,startIndex + totalLines + 1);
+            fprintf(stderr, "Error in file '%s' at line %d: extraneous text after macro end.\n", inputFilename ,startIndex + totalLines + 1);
             isError = 1;
             return 0;
         }
         *cursorPtr = cursor;
         if(**cursorPtr == '\n') (*cursorPtr)++;
+        else (*am_counter)--;
         return 1;
     }
     return 0;
@@ -227,16 +233,15 @@ int is_macro_end(char **cursorPtr, int startIndex, int totalLines, char *inputFi
 
 void replace_macro(FILE *outputFile, macroNode *macro, int *am_counter, int *as_counter, char **cursorPtr) {
     int i;
+    char *tmp = *cursorPtr + strlen(macro->name);
 
+    while(*tmp == ' ' || *tmp == '\t') tmp++;
     /* if the line contains extra characters treat it as a regular line and not a call to macro */
-    if(*(*cursorPtr + strlen(macro->name)) != '\n' && *(*cursorPtr + strlen(macro->name)) != '\0') {
+    if(*tmp != '\n' && *tmp != '\0') {
         add_line(outputFile, cursorPtr, as_counter, am_counter);
         return;
     }
-
-    /* copy the macro content to the output file */
-    fprintf(outputFile, "%s", macro->content);
-
+    
     /* update the translateIndexes array with the new macro lines */
     for(i = 0; i < macro->totalLines; i++) translateIndexes[*am_counter + i] = macro->startIndex + 1 + i;
     *am_counter += macro->totalLines - 1;
@@ -248,6 +253,12 @@ void replace_macro(FILE *outputFile, macroNode *macro, int *am_counter, int *as_
         (*as_counter)++;
         (*am_counter)++;
     }
+    else {
+        macro->content[strlen(macro->content) - 1] = '\0';
+    }
+
+    /* copy the macro content to the output file */
+    fprintf(outputFile, "%s", macro->content);
 }
 
 void add_line(FILE *outputFile, char **cursorPtr, int *as_counter, int *am_counter) {

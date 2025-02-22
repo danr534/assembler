@@ -1,7 +1,7 @@
 #include "utils.h"
 
 char *inputExt = ".as";
-char *extendendInputExt = ".am";
+char *extendedInputExt = ".am";
 char *readMode = "r";
 char *writeMode = "w";
 
@@ -21,8 +21,8 @@ FILE *open_file(char *filename, char *extension, char *mode) {
     /* open the file */
     file = fopen(fullName, mode);
     if (file == NULL) {
-        if (!strcmp(mode, readMode)) printf("Error opening file '%s': ", fullName);
-        else printf("Error creating file '%s': ", fullName);
+        if (!strcmp(mode, readMode)) fprintf(stderr, "Error opening file '%s': ", fullName);
+        else fprintf(stderr, "Error creating file '%s': ", fullName);
         perror("");
     }
     /* free memory for fullName variable */
@@ -30,30 +30,30 @@ FILE *open_file(char *filename, char *extension, char *mode) {
     return file;
 }
 
-char *get_file_content(FILE *file, char *filename, char *extension, long *fileSize) {
+char *get_file_content(FILE *inputFile, char *filename, char *extension, long *fileSize) {
     char *buffer; /* the buffer to save the file content */
     size_t bytesRead; /* the number of successfull bytes copied from the file */
 
      /* move to the end of the file to determine its size */
-    fseek(file, 0, SEEK_END);
-    *fileSize = ftell(file);
-    rewind(file);
+    fseek(inputFile, 0, SEEK_END);
+    *fileSize = ftell(inputFile);
+    rewind(inputFile);
 
     /* allocate memory for the string (+1 for the null terminator) */
     buffer = (char *)malloc((*fileSize + 1) * sizeof(char));
     if (buffer == NULL) {
-        printf("Failed to allocate memory for file '%s%s': ", filename, extension);
+        fprintf(stderr, "Failed to allocate memory for file '%s%s': ", filename, extension);
         perror("");
-        fclose(file);
+        fclose(inputFile);
         return NULL;
     }
 
     /* Read the file contents into the buffer */
-    bytesRead = fread(buffer, sizeof(char), *fileSize, file);
+    bytesRead = fread(buffer, sizeof(char), *fileSize, inputFile);
     buffer[bytesRead] = '\0';
 
     /* close file */
-    fclose(file);
+    fclose(inputFile);
 
     /* return the buffer */
     return buffer;
@@ -63,8 +63,9 @@ void remove_file(char *filename, char *extension) {
     char *fullName = combine_strings(filename, extension);
     int removeError = remove(fullName);
     if(removeError) {
-        printf("Error deleting file '%s': ", fullName);
+        fprintf(stderr, "Error deleting file '%s': ", fullName);
         perror("");
     }
     free(fullName);
 }
+

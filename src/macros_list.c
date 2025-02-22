@@ -32,7 +32,7 @@ macroNode *search_macro(macroNode *head, char *name) {
     macroNode *temp = head;
     while (temp != NULL) {
         if (!strncmp(temp->name, name, strlen(temp->name))) {
-            return temp;
+            if(*(name + strlen(temp->name)) == ' ' || *(name + strlen(temp->name)) == '\t' || *(name + strlen(temp->name)) == '\n' || *(name + strlen(temp->name)) == '\0') return temp;
         }
         temp = temp->next;
     }
