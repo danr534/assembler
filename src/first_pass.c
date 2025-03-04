@@ -4,17 +4,17 @@ int opCodes[] = {0, 1, 2, 2, 4, 5, 5, 5, 5, 9, 9, 9, 12, 13, 14, 15};
 int functs[] = {0, 0, 1, 2, 0, 1, 2, 3, 4, 1, 2, 3, 0, 0, 0, 0};
 char registers[][3] = {"r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7"};
 char codeImage[IMAGE_SIZE][7];
-char *dataImage[IMAGE_SIZE];
+char dataImage[IMAGE_SIZE][7];
 
 /**
  * Encodes the operation in the current line.
  * @param fullInputName the full name of the input file.
- * @param counter line counter in the expanded input file.
+ * @param line line counter in the input file.
  * @param cursor pointer of the current line (skips blank characters at the beginning).
  * @param op the operation number in respect to the operations names
  * @param ICPtr pointer to IC
  */
-void read_operation(char *fullInputName, int counter, char *cursor, int op, int *ICPtr);
+void read_operation(char *fullInputName, int line, char *cursor, int op, int *ICPtr);
 
 /** 
  * Adds operation word to the code encoding buffer.
@@ -58,7 +58,7 @@ void decode_single_operand_operation(char *cursor, char *fullInputName, int line
  * @param operation the operation name.
  * @return the immediate value as integer.
  */
-long extract_immediate_value(char **cursorPtr, char *fullInputName, int line, const char *operation);
+long extract_immediate_value(char **cursorPtr, char *fullInputName, int line, char *type);
 
 /**
  * Checks if the label is valid.
@@ -90,6 +90,16 @@ int is_reg_operand(char **cursorPtr, char *fullInputName, int line, const char *
  */
 void decode_two_operands_operation(char *cursor, char *fullInputName, int line, const char *operation, int op, int *ICPtr);
 
+/**
+ * Encodes the directive in the current line in the data buffer.
+ * @param fullInputName the full name of the input file.
+ * @param line line counter in the input file.
+ * @param cursor pointer of the current line (skips blank characters at the beginning).
+ * @param directive the directive number in respect to the operations names
+ * @param DCPtr pointer to DC
+ */
+void read_directive(char *fullInputName, int line, char *cursor, int directive, int *DCPtr);
+
 
 void first_pass(FILE *extendedInputFile, char *inputName) {
     char *cursor = (char *)malloc(MAX_LINE_LENGTH * sizeof(char)); /* pointer of the current line */
@@ -105,14 +115,19 @@ void first_pass(FILE *extendedInputFile, char *inputName) {
 
         /* check if the current line is an operation */
         for(i = 0; i < NUM_OPERATIONS; i++) {
-            if(!strncmp(cursor, operations[i], strlen(operations[i]))) read_operation(fullInputName, counter, cursor, i, &IC);
+            if(!strncmp(cursor, operations[i], strlen(operations[i]))) read_operation(fullInputName, translateIndexes[counter], cursor, i, &IC);
+        }
+
+        /* check if the current line is a directive */
+        for(i = 0; i < NUM_DIRECTIVES; i++) {
+            if(!strncmp(cursor, directives[i], strlen(directives[i]))) read_directive(fullInputName, translateIndexes[counter], cursor, i, &DC);
         }
         
         counter++;
     }
 }
 
-void read_operation(char *fullInputName, int counter, char *cursor, int op, int *ICPtr) {
+void read_operation(char *fullInputName, int line, char *cursor, int op, int *ICPtr) {
     
     cursor += strlen(operations[op]);
 
@@ -123,7 +138,7 @@ void read_operation(char *fullInputName, int counter, char *cursor, int op, int 
         
         while(*cursor == ' ' || *cursor == '\t') cursor++;
         if(*cursor != '\n' && *cursor != '\0') {
-            fprintf(stderr ,"Error in file '%s' at line %d: unexpected operand, the operation '%s' does not require any operands.\n", fullInputName, translateIndexes[counter], operations[op]);
+            fprintf(stderr ,"Error in file '%s' at line %d: unexpected operand, the operation '%s' does not require any operands.\n", fullInputName, line, operations[op]);
             isError = 1;
             return;
         }
@@ -134,7 +149,7 @@ void read_operation(char *fullInputName, int counter, char *cursor, int op, int 
 
     /* check for space after operation*/
     if(*cursor != ' ' && *cursor != '\t') {
-        fprintf(stderr, "Error in file '%s' at line %d: missing space after the operation '%s'.\n", fullInputName, translateIndexes[counter], operations[op]);
+        fprintf(stderr, "Error in file '%s' at line %d: missing space after the operation '%s'.\n", fullInputName, line, operations[op]);
         isError = 1;
         return;
     }
@@ -143,12 +158,12 @@ void read_operation(char *fullInputName, int counter, char *cursor, int op, int 
     
     /* check for one operand operations */
     if(op == clr || op == not || op == inc || op == dec || op == jmp || op == bne || op == jsr || op == red || op == prn) {
-        decode_single_operand_operation(cursor, fullInputName, translateIndexes[counter], operations[op], op, ICPtr);
+        decode_single_operand_operation(cursor, fullInputName, line, operations[op], op, ICPtr);
     }
 
     /* handle two operand operations */
     else {
-        decode_two_operands_operation(cursor, fullInputName, translateIndexes[counter], operations[op], op, ICPtr);
+        decode_two_operands_operation(cursor, fullInputName, line, operations[op], op, ICPtr);
     }
 }
 
@@ -215,17 +230,14 @@ void decode_single_operand_operation(char *cursor, char *fullInputName, int line
         cursor++;
 
         /* extract the immediate value */
-        immediate_value = extract_immediate_value(&cursor, fullInputName, line, operation);
+        immediate_value = extract_immediate_value(&cursor, fullInputName, line, "operation");
         if(isError) return;
 
         /* check for extra operands */
-        if(cursor != NULL) {
-            while(*cursor == ' ' || *cursor == '\t') cursor++;
-            if(*cursor != '\n' && *cursor != '\0') {
-                fprintf(stderr, "Error in file '%s' at line %d: too many operands, the operation '%s' requires exactly one operand.\n", fullInputName, line, operation);
-                isError = 1;
-                return;
-            }
+        if(*cursor != '\n' && *cursor != '\0') {
+            fprintf(stderr, "Error in file '%s' at line %d: too many operands, the operation '%s' requires exactly one operand.\n", fullInputName, line, operation);
+            isError = 1;
+            return;
         }
         
         /* add the operation word and information word of the operand to the code buffer */
@@ -310,39 +322,54 @@ void decode_single_operand_operation(char *cursor, char *fullInputName, int line
     }
 }
 
-long extract_immediate_value(char **cursorPtr, char *fullInputName, int line, const char *operation) {
+long extract_immediate_value(char **cursorPtr, char *fullInputName, int line, char *type) {
     long immediate_value; /* the immediate value as an integer */
     char *cursor = *cursorPtr; /* pointer to the operand in line */
     char *endPtr = cursor; /* pointer to the rest of the line after the integer */
-    char *immediate_str = strtok(cursor, " \t\n"); /* the operand as a string */
 
     /* check for missing value */
-    if(immediate_str == NULL) {
+    if(*cursor == '\n' || *cursor == '\0' || *cursor == ' ' || *cursor == '\t' || *cursor == ',') {
         fprintf(stderr, "Error in file '%s' at line %d: missing operand value.\n", fullInputName, line);
         isError = 1;
         return 0;
     }
 
     /* extract the immediate value to an integer */
-    immediate_value = strtol(immediate_str, &endPtr, 10);
+    immediate_value = strtol(cursor, &endPtr, 10);
     
-    /* check for missing or illegal immediate value */
-    if(endPtr == immediate_str || *endPtr != '\0') {
-        fprintf(stderr, "Error in file '%s' at line %d: the operand value '%s' is not an integer.\n", fullInputName, line, immediate_str);
+    /* check for an illegal immediate value */
+    if(endPtr == cursor || (*endPtr != ' ' && *endPtr != '\t' && *endPtr != '\n' && *endPtr != '\0')) {
+        if(*endPtr == ',') fprintf(stderr, "Error in file '%s' at line %d: the operand value '%s' is not an integer.\n", fullInputName, line, strtok(cursor, " \t\n"));
+        else fprintf(stderr, "Error in file '%s' at line %d: the operand value '%s' is not an integer.\n", fullInputName, line, strtok(cursor, ", \t\n"));
         isError = 1;
         return 0;
     }
     
-    /* check for overflow/underflow in 21 bits */
-    if(immediate_value > INT21_MAX || immediate_value < INT21_MIN) {
-        if(immediate_value > INT21_MAX) fprintf(stderr, "Error in file '%s' at line %d: the operand value '%s' is too large, please enter a value between -2^20 and 2^20-1.\n", fullInputName, line, immediate_str);
-        else fprintf(stderr, "Error in file '%s' at line %d: the operand value '%s' is too small, please enter a value between -2^20 and 2^20-1.\n", fullInputName, line, immediate_str);
-        isError = 1;
-        return 0;
+    /* if the immediate belongs to an operation */
+    if(!strcmp(type, "operation")) {
+        /* check for overflow/underflow in 21 bits */
+        if(immediate_value > INT21_MAX || immediate_value < INT21_MIN) {
+            if(immediate_value > INT21_MAX) fprintf(stderr, "Error in file '%s' at line %d: the operand value '%s' is too large, please enter a value between -2^20 and 2^20-1.\n", fullInputName, line, strtok(cursor, ", \t\n"));
+            else fprintf(stderr, "Error in file '%s' at line %d: the operand value '%s' is too small, please enter a value between -2^20 and 2^20-1.\n", fullInputName, line, strtok(cursor, ", \t\n"));
+            isError = 1;
+            return 0;
+        }
+    }
+
+    /* if the immediate belongs to a data directive */
+    else {
+        /* check for overflow/underflow in 24 bits */
+        if(immediate_value > INT24_MAX || immediate_value < INT24_MIN) {
+            if(immediate_value > INT24_MAX) fprintf(stderr, "Error in file '%s' at line %d: the operand value '%s' is too large, please enter a value between -2^24 and 2^24-1.\n", fullInputName, line, strtok(cursor, ", \t\n"));
+            else fprintf(stderr, "Error in file '%s' at line %d: the operand value '%s' is too small, please enter a value between -2^24 and 2^24-1.\n", fullInputName, line, strtok(cursor, ", \t\n"));
+            isError = 1;
+            return 0;
+        }
     }
 
     /* get the rest of the line after the integer */
-    *cursorPtr = strtok(NULL, "");
+    *cursorPtr = endPtr;
+    while(**cursorPtr == ' ' || **cursorPtr == '\t') (*cursorPtr)++;
 
     /* return the immediate value */
     return immediate_value;
@@ -470,7 +497,7 @@ void decode_two_operands_operation(char *cursor, char *fullInputName, int line, 
         cursor++;
 
         /* extract the source operand immediate value */
-        source_immediate_value = extract_immediate_value(&cursor, fullInputName, line, operation);
+        source_immediate_value = extract_immediate_value(&cursor, fullInputName, line, "operation");
         if(isError) return;
         
         source_reg = 0;
@@ -533,17 +560,14 @@ void decode_two_operands_operation(char *cursor, char *fullInputName, int line, 
         cursor++;
 
         /* extract the target operand immediate value */
-        target_immediate_value = extract_immediate_value(&cursor, fullInputName, line, operation);
+        target_immediate_value = extract_immediate_value(&cursor, fullInputName, line, "operation");
         if(isError) return;
 
         /* check for extra operands */
-        if(cursor != NULL) {
-            while(*cursor == ' ' || *cursor == '\t') cursor++;
-            if(*cursor != '\n' && *cursor != '\0') {
-                fprintf(stderr, "Error in file '%s' at line %d: too many operands, the operation '%s' requires exactly two operands.\n", fullInputName, line, operation);
-                isError = 1;
-                return;
-            }
+        if(*cursor != '\n' && *cursor != '\0') {
+            fprintf(stderr, "Error in file '%s' at line %d: too many operands, the operation '%s' requires exactly two operands.\n", fullInputName, line, operation);
+            isError = 1;
+            return;
         }
         
         
@@ -595,4 +619,54 @@ void decode_two_operands_operation(char *cursor, char *fullInputName, int line, 
         else if(source_addressing == direct) (*ICPtr)++;
         (*ICPtr)++;
     }
+}
+
+void read_directive(char *fullInputName, int line, char *cursor, int directive, int *DCPtr) {
+    long immediate_number; /* current immediate integer (if data directive)*/
+    char *commaPtr = cursor; /* pointer to the comma in the line between the operands */
+
+    cursor += strlen(directives[directive]);
+
+    /* check for space after the directive */
+    if(*cursor != ' ' && *cursor != '\t') {
+        fprintf(stderr, "Error in file '%s' at line %d: missing space after the directive '%s'.\n", fullInputName, line, directives[directive]);
+        isError = 1;
+        return;
+    }
+
+    while(*cursor == ' ' || *cursor == '\t') cursor++;
+
+    /* handle .data directive */
+    if(directive == data) {
+        do {
+
+            /* find the comma in the line and replace it with a blank */
+            while(*commaPtr != ',' && *commaPtr != '\n' && *commaPtr != '\0') {
+                commaPtr++;
+            }
+            if(*commaPtr == ',' && commaPtr != cursor) *commaPtr = ' ';
+            
+            /* extract the current immediate value */
+            immediate_number = extract_immediate_value(&cursor, fullInputName, line, "data");
+            if(isError) return;
+
+            /* check that the comma was in the right place */
+            if(cursor < commaPtr) {
+                fprintf(stderr, "Error in file '%s' at line %d: missing comma, there must be a comma between every subsequent operands.\n", fullInputName, line);
+                isError = 1;
+                return;
+            }
+
+            /* make sure the word fits in 24 bits */
+            immediate_number &= 0xFFFFFF;
+
+            /* convert to word to hex string and save it in the data buffer */
+            sprintf(dataImage[*DCPtr], "%06X", immediate_number);
+            printf("Data: %s\n", dataImage[*DCPtr]);
+            
+            (*DCPtr)++;
+        }
+        while(*commaPtr != '\n' && *commaPtr != '\0');
+    }
+    
 }
