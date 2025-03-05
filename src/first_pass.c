@@ -55,7 +55,7 @@ void decode_single_operand_operation(char *cursor, char *fullInputName, int line
  * @param cursorPtr pointer to the pointer to the operand in the line.
  * @param fullInputName the full name of the input file.
  * @param line the line number in the input file.
- * @param operation the operation name.
+ * @param type the operand type (operation or data).
  * @return the immediate value as integer.
  */
 long extract_immediate_value(char **cursorPtr, char *fullInputName, int line, char *type);
@@ -65,7 +65,6 @@ long extract_immediate_value(char **cursorPtr, char *fullInputName, int line, ch
  * @param cursorPtr pointer to the pointer to the label in the line.
  * @param fullInputName the full name of the input file.
  * @param line the line number in the input file.
- * @param operation the operation name.
  * @return 1 if the label is valid, 0 otherwise.
  */
 int is_valid_label(char **cursorPtr, char *fullInputName, int line);
@@ -73,12 +72,9 @@ int is_valid_label(char **cursorPtr, char *fullInputName, int line);
 /**
  * Checks if the operand is a register.
  * @param cursorPtr pointer to the pointer to the operand in the line.
- * @param fullInputName the full name of the input file.
- * @param line the line number in the input file.
- * @param operation the operation name.
  * @return the number of the register (-1 if the operand is not a register).
  */
-int is_reg_operand(char **cursorPtr, char *fullInputName, int line, const char *operation);
+int is_reg_operand(char **cursorPtr);
 
 /**
  * Decodes operation line with 2 operands.
@@ -277,7 +273,7 @@ void decode_single_operand_operation(char *cursor, char *fullInputName, int line
     }
 
     /* handle register operand */
-    else if((reg = is_reg_operand(&cursor, fullInputName, line, operation)) != -1){
+    else if((reg = is_reg_operand(&cursor)) != -1){
 
         /* check if the operation is compatible with a register operand */
         if(op == jmp || op == bne || op == jsr) {
@@ -439,7 +435,7 @@ int is_valid_label(char **cursorPtr, char *fullInputName, int line) {
     return 1;
 }
 
-int is_reg_operand(char **cursorPtr, char *fullInputName, int line, const char *operation) {
+int is_reg_operand(char **cursorPtr) {
     int i;
     char *cursor = *cursorPtr; /* pointer to the operand in line */
 
@@ -506,7 +502,7 @@ void decode_two_operands_operation(char *cursor, char *fullInputName, int line, 
     }
 
     /* handle register source operand */
-    else if((source_reg = is_reg_operand(&cursor, fullInputName, line, operation)) != -1) {
+    else if((source_reg = is_reg_operand(&cursor)) != -1) {
 
         /* check if the operation is compatible with a register source operand */
         if(op == lea) {
@@ -579,7 +575,7 @@ void decode_two_operands_operation(char *cursor, char *fullInputName, int line, 
     }
 
     /* handle register target operand */
-    else if((target_reg = is_reg_operand(&cursor, fullInputName, line, operation)) != -1) {
+    else if((target_reg = is_reg_operand(&cursor)) != -1) {
 
         /* check for extra operands */
         while(*cursor == ' ' || *cursor == '\t') cursor++;

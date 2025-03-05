@@ -1,1 +1,1 @@
-.extern ABC 2
+.extern ABC
