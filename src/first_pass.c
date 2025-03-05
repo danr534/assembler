@@ -434,7 +434,7 @@ int is_valid_label(char **cursorPtr, char *fullInputName, int line) {
     }
     
     /* get the rest of the line after the label */
-    *cursorPtr = strtok(NULL, " \t\n");
+    *cursorPtr = strtok(NULL, "");
 
     return 1;
 }
