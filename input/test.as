@@ -1,1 +1,1 @@
-.data 5, A
+.extern ABC 2

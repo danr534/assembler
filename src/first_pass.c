@@ -68,7 +68,7 @@ long extract_immediate_value(char **cursorPtr, char *fullInputName, int line, ch
  * @param operation the operation name.
  * @return 1 if the label is valid, 0 otherwise.
  */
-int is_valid_label(char **cursorPtr, char *fullInputName, int line, const char *operation);
+int is_valid_label(char **cursorPtr, char *fullInputName, int line);
 
 /**
  * Checks if the operand is a register.
@@ -257,7 +257,7 @@ void decode_single_operand_operation(char *cursor, char *fullInputName, int line
         cursor++;
 
         /* check if the operand is a valid label */
-        if(!is_valid_label(&cursor, fullInputName, line, operation)) {
+        if(!is_valid_label(&cursor, fullInputName, line)) {
             isError = 1;
             return;
         }
@@ -302,7 +302,7 @@ void decode_single_operand_operation(char *cursor, char *fullInputName, int line
     else {
 
         /* check if the operand is a valid label */
-        if(!is_valid_label(&cursor, fullInputName, line, operation)) {
+        if(!is_valid_label(&cursor, fullInputName, line)) {
             isError = 1;
             return;
         }
@@ -376,7 +376,7 @@ long extract_immediate_value(char **cursorPtr, char *fullInputName, int line, ch
     
 }
 
-int is_valid_label(char **cursorPtr, char *fullInputName, int line, const char *operation) {
+int is_valid_label(char **cursorPtr, char *fullInputName, int line) {
     char *cursor = *cursorPtr; /* pointer to the operand in line */
     char *label = strtok(cursor, " \t\n"); /* the operand as a string */
     int i;
@@ -434,7 +434,7 @@ int is_valid_label(char **cursorPtr, char *fullInputName, int line, const char *
     }
     
     /* get the rest of the line after the label */
-    *cursorPtr = strtok(NULL, "");
+    *cursorPtr = strtok(NULL, " \t\n");
 
     return 1;
 }
@@ -522,7 +522,7 @@ void decode_two_operands_operation(char *cursor, char *fullInputName, int line, 
     else {
 
         /* check if the source operand is a valid label */
-        if(!is_valid_label(&cursor, fullInputName, line, operation)) {
+        if(!is_valid_label(&cursor, fullInputName, line)) {
             isError = 1;
             return;
         }
@@ -599,7 +599,7 @@ void decode_two_operands_operation(char *cursor, char *fullInputName, int line, 
     else {
 
         /* check if the target operand is a valid label */
-        if(!is_valid_label(&cursor, fullInputName, line, operation)) {
+        if(!is_valid_label(&cursor, fullInputName, line)) {
             isError = 1;
             return;
         }
@@ -636,7 +636,7 @@ void read_directive(char *fullInputName, int line, char *cursor, int directive, 
 
     while(*cursor == ' ' || *cursor == '\t') cursor++;
 
-    /* handle .data directive */
+    /* handle data directive */
     if(directive == data) {
         do {
 
@@ -667,6 +667,65 @@ void read_directive(char *fullInputName, int line, char *cursor, int directive, 
             (*DCPtr)++;
         }
         while(*commaPtr != '\n' && *commaPtr != '\0');
+    }
+
+    /* handle string directive*/
+    else if(directive == string) {
+
+        /* check for beginning quotion mark*/
+        if(*cursor != '"') {
+            fprintf(stderr, "Error in file '%s' at line %d: missing quotion marks.\n", fullInputName, line);
+            isError = 1;
+            return;
+        }
+        cursor++;
+
+        /* iterate over each character and store it in the data buffer */
+        while(*cursor != '"' && *cursor != '\n' && *cursor != '\0') {
+            sprintf(dataImage[*DCPtr], "%06X", *cursor);
+            printf("String: %s\n", dataImage[*DCPtr]);
+            (*DCPtr)++;
+            cursor++;
+        }
+
+        /* store a null terminator in the data buffer*/
+        sprintf(dataImage[*DCPtr], "%06X", '\0');
+        printf("String: %s\n", dataImage[*DCPtr]);
+        (*DCPtr)++;
+
+        /* check for ending quotion mark*/
+        if(*cursor != '"') {
+            fprintf(stderr, "Error in file '%s' at line %d: missing quotion marks.\n", fullInputName, line);
+            isError = 1;
+            return;
+        }
+        cursor++;
+
+        /* check for extra operands */
+        if(*cursor != '\n' && *cursor != '\0') {
+            fprintf(stderr, "Error in file '%s' at line %d: too many operands, the directive '%s' require only one operand.\n", fullInputName, line, directives[directive]);
+            isError = 1;
+            return;
+        }
+
+    }
+
+    /* handle entry or extern directives */
+    else {
+        if(!is_valid_label(&cursor, fullInputName, line)) {
+            isError = 1;
+            return;
+        }
+
+        /* check for extra operands */
+        if(cursor != NULL) {
+            while(*cursor == ' ' || *cursor == '\t') cursor++;
+            if(*cursor != '\n' && *cursor != '\0') {
+                fprintf(stderr, "Error in file '%s' at line %d: too many operands, the directive '%s' require only one operand.\n", fullInputName, line, directives[directive]);
+                return;
+            }
+        }
+
     }
     
 }
