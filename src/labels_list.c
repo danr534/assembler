@@ -1,20 +1,19 @@
-#include "macros_list.h"
+#include "labels_list.h"
 
-macroNode *create_macro(char *name, char *content, int startIndex, int totalLines) {
-    macroNode *newNode = (macroNode *)malloc(sizeof(macroNode));
+labelNode *create_label(char *name, int value, int type) {
+    labelNode *newNode = (labelNode *)malloc(sizeof(labelNode));
 
     newNode->name = name;
-    newNode->content = content;
-    newNode->startIndex = startIndex;
-    newNode->totalLines = totalLines;
+    newNode->value = value;
+    newNode->type = type;
     newNode->next = NULL;
 
     return newNode;
 }
 
-void append_macro(macroNode **head, char *name, char *content, int startIndex, int totalLines) {
-    macroNode *newNode = create_macro(name, content, startIndex, totalLines);
-    macroNode *temp;
+void append_label(labelNode **head, char *name, int value, int type) {
+    labelNode *newNode = create_label(name, value, type);
+    labelNode *temp;
     
     if (*head == NULL) {
         *head = newNode;
@@ -28,8 +27,8 @@ void append_macro(macroNode **head, char *name, char *content, int startIndex, i
     temp->next = newNode;
 }
 
-macroNode *search_macro(macroNode *head, char *name) {
-    macroNode *temp = head;
+labelNode *search_label(labelNode *head, char *name) {
+    labelNode *temp = head;
     while (temp != NULL) {
         if (!strncmp(temp->name, name, strlen(temp->name))) {
             if(*(name + strlen(temp->name)) == ' ' || *(name + strlen(temp->name)) == '\t' || *(name + strlen(temp->name)) == '\n' || *(name + strlen(temp->name)) == '\0') return temp;
@@ -39,13 +38,12 @@ macroNode *search_macro(macroNode *head, char *name) {
     return NULL;
 }
 
-void free_macros_list(macroNode *head) {
-    macroNode *temp;
+void free_labels_list(labelNode *head) {
+    labelNode *temp;
     while (head != NULL) {
         temp = head;
         head = head->next;
         free(temp->name);
-        free(temp->content);
         free(temp);
     }
 }

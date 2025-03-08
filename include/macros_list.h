@@ -43,5 +43,5 @@ macroNode *search_macro(macroNode *head, char *name);
  * Free the macros list 
  * @param head pointer to the macros list 
  */
-void free_macros(macroNode *head);
+void free_macros_list(macroNode *head);
 

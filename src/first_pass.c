@@ -5,6 +5,9 @@ int functs[] = {0, 0, 1, 2, 0, 1, 2, 3, 4, 1, 2, 3, 0, 0, 0, 0};
 char registers[][3] = {"r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7"};
 char codeImage[IMAGE_SIZE][7];
 char dataImage[IMAGE_SIZE][7];
+labelNode *labels = NULL; 
+int ICF;
+int DCF;
 
 /**
  * Encodes the operation in the current line.
@@ -96,6 +99,16 @@ void decode_two_operands_operation(char *cursor, char *fullInputName, int line, 
  */
 void read_directive(char *fullInputName, int line, char *cursor, int directive, int *DCPtr);
 
+/**
+ * Reads the label at the beginning of the line and adds it to the label list.
+ * @param fullInputName the full name of the input file.
+ * @param line line counter in the input file.
+ * @param cursor pointer of the current line (skips blank characters at the beginning).
+ * @param ICPtr pointer to IC.
+ * @param DCPtr pointer to DC.
+ */
+void read_label(char *fullInputName, int line, char *cursor, int *ICPtr, int *DCPtr);
+
 
 void first_pass(FILE *extendedInputFile, char *inputName) {
     char *cursor = (char *)malloc(MAX_LINE_LENGTH * sizeof(char)); /* pointer of the current line */
@@ -103,31 +116,56 @@ void first_pass(FILE *extendedInputFile, char *inputName) {
     int IC = INITIAL_CODE_ADDRESS; /* counter of the code encoded words */
     int DC = 0; /* counter of the data encoded words */
     char *fullInputName = combine_strings(inputName, inputExt); /* the full name of the input file */
+    int is_read; /* a boolean variable that is 1 if the line is already read and 0 otherwise */
+    char *tmp; /* temporary pointer to check that the operation is not a prefix of a label */
     int i;
     
     /* iterate over each line in the expended input file and encode it */
     while(fgets(cursor, MAX_LINE_LENGTH, extendedInputFile) != NULL) {
+        is_read = 0;
         while(*cursor == ' ' || *cursor == '\t') cursor++; /* skip over white characters */
 
         /* check if the current line is an operation */
         for(i = 0; i < NUM_OPERATIONS; i++) {
-            if(!strncmp(cursor, operations[i], strlen(operations[i]))) read_operation(fullInputName, translateIndexes[counter], cursor, i, &IC);
+            if(!strncmp(cursor, operations[i], strlen(operations[i]))) {
+                tmp = cursor + strlen(operations[i]);
+                if(*tmp == ' ' || *tmp == '\t' || *tmp == '\n' || *tmp == '\0') {
+                    read_operation(fullInputName, translateIndexes[counter], cursor, i, &IC);
+                    is_read = 1;
+                }
+            }
         }
 
         /* check if the current line is a directive */
         for(i = 0; i < NUM_DIRECTIVES; i++) {
-            if(!strncmp(cursor, directives[i], strlen(directives[i]))) read_directive(fullInputName, translateIndexes[counter], cursor, i, &DC);
+            if(!strncmp(cursor, directives[i], strlen(directives[i]))) {
+                read_directive(fullInputName, translateIndexes[counter], cursor, i, &DC);
+                is_read = 1;
+            }
         }
         
+        /* ensure the line isn't empty or a comment */
+        if(*cursor != ';' && *cursor != '\n' && *cursor != '\0' && is_read == 0) {
+            read_label(fullInputName, translateIndexes[counter], cursor, &IC, &DC);
+        }
         counter++;
     }
+
+    /* free the macro list */
+    free_macros_list(macros);
+
+    /* set the file pointer to the beginning of the file */
+    rewind(extendedInputFile);
+    
+    /* set ICF and DCF */
+    ICF = IC;
+    DCF = DC;
+
 }
 
 void read_operation(char *fullInputName, int line, char *cursor, int op, int *ICPtr) {
     
     cursor += strlen(operations[op]);
-
-    if(*cursor == ':') return; /* illegal label name */
 
     /* check zero operands operations */
     if(op == rts || op == stop) {
@@ -620,9 +658,13 @@ void decode_two_operands_operation(char *cursor, char *fullInputName, int line, 
 void read_directive(char *fullInputName, int line, char *cursor, int directive, int *DCPtr) {
     long immediate_number; /* current immediate integer (if data directive)*/
     char *commaPtr = cursor; /* pointer to the comma in the line between the operands */
+    char *tmp; /* temporary pointer */
+    char *endLabel; /* pointer to the end of the label */
+    int labelLength; /* the length of the label including null pointer */
+    char *label = NULL; /* the label name */
 
     cursor += strlen(directives[directive]);
-
+    
     /* check for space after the directive */
     if(*cursor != ' ' && *cursor != '\t') {
         fprintf(stderr, "Error in file '%s' at line %d: missing space after the directive '%s'.\n", fullInputName, line, directives[directive]);
@@ -708,11 +750,35 @@ void read_directive(char *fullInputName, int line, char *cursor, int directive, 
 
     /* handle entry or extern directives */
     else {
-        if(!is_valid_label(&cursor, fullInputName, line)) {
+        
+        tmp = cursor;
+        endLabel = cursor;
+        while(*endLabel != ' ' && *endLabel != '\t' && *endLabel != '\n' && *endLabel != '\0') endLabel++;
+
+        if(!is_valid_label(&tmp, fullInputName, line)) {
             isError = 1;
             return;
         }
 
+        /* handle extern directive */
+        if(directive == extrn) {
+            /* copy the label name into label */
+            labelLength = endLabel - cursor + 1;
+            label = (char *)malloc((labelLength) * sizeof(char));
+            strncpy(label, cursor, labelLength);
+            
+            /* check if the label is already declared */
+            if(search_label(labels, label) != NULL) {
+                fprintf(stderr, "Error in file '%s' at line %d: the label '%s' is already declared.\n", fullInputName, line, label);
+                isError = 1;
+                return;
+            }
+
+            /* add the label the labels list */
+            append_label(&labels, label, 0, _external);
+        }
+        
+        cursor = tmp;
         /* check for extra operands */
         if(cursor != NULL) {
             while(*cursor == ' ' || *cursor == '\t') cursor++;
@@ -724,4 +790,86 @@ void read_directive(char *fullInputName, int line, char *cursor, int directive, 
 
     }
     
+}
+
+void read_label(char *fullInputName, int line, char *cursor, int *ICPtr, int *DCPtr) {
+    char *colonPtr = strchr(cursor, ':'); /* ptr to the colon after the label decleration */
+    char *tmp = cursor; /* temporary cursor for the function is_valid_label() */
+    int labelLength; /* length of the label including null terminator */
+    char *label = NULL; /* label name */
+    int i;
+
+    /* check that the colon exists*/
+    if(colonPtr == NULL) {
+        fprintf(stderr, "Error in file '%s' at line %d: missing colon after label decleration .\n", fullInputName, line);
+        isError = 1;
+        return;
+    }
+
+    /* check for space between the label and the colon */
+    while(*tmp != ' ' && *tmp != '\t' && *tmp != ':') tmp++;
+    if(tmp != colonPtr) {
+        fprintf(stderr, "Error in file '%s' at line %d: illegal space between label decleration and colon.\n", fullInputName, line);
+        isError = 1;
+        return;
+    }
+
+    /* remove it so the is_valid_label function won't include it in the label */
+    *colonPtr = '\0';
+    tmp = cursor;
+    /* check that the label has valid synthax */
+    if(!is_valid_label(&tmp, fullInputName, line)) {
+        isError = 1;
+        return;
+    }
+
+
+    /* copy the label name into label */
+    labelLength = colonPtr - cursor + 1;
+    label = (char *)malloc((labelLength) * sizeof(char));
+    strncpy(label, cursor, labelLength);
+
+    printf("label: %s\n", label);
+    /* check if the label is already declared */
+    if(search_label(labels, label) != NULL) {
+        fprintf(stderr, "Error in file '%s' at line %d: the label '%s' is already declared.\n", fullInputName, line, label);
+        isError = 1;
+        return;
+    }
+
+    cursor = colonPtr + 1;
+    while(*cursor == ' ' || *cursor == '\t') cursor++;
+    
+    /* check if the label is an operation label */
+    for(i = 0; i < NUM_OPERATIONS; i++) {
+        if(!strncmp(cursor, operations[i], strlen(operations[i]))) {
+            tmp = cursor + strlen(operations[i]);
+            /* check if the operation is not a prefix of a label */
+            if(*tmp == ' ' || *tmp == '\t' || *tmp == '\n' || *tmp == '\0') {
+                append_label(&labels, label, *ICPtr, _code);
+                read_operation(fullInputName, line, cursor, i, ICPtr);
+                return;
+            }   
+        }
+    }
+
+    /* check if the label is a data directive label */
+    if(!strncmp(cursor, directives[data], strlen(directives[data]))) {
+        append_label(&labels, label, *DCPtr, _data);
+        read_directive(fullInputName, line, cursor, data, DCPtr);
+    }
+
+    /* check if the label is a string directive label */
+    else if(!strncmp(cursor, directives[string], strlen(directives[string]))) {
+        append_label(&labels, label, *DCPtr, _data);
+        read_directive(fullInputName, line, cursor, string, DCPtr);
+    }
+
+    /* handle missing operation or directive after label decleration */
+    else {
+        fprintf(stderr, "Error in file '%s' at line %d: missing operation or directive after label decleration.\n", fullInputName, line);
+        isError = 1;
+    }
+
+
 }
