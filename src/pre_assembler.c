@@ -3,7 +3,7 @@
 int *translateIndexes;
 int numLines;
 int isError;
-macroNode *macros = NULL; 
+macroNode *macros; 
 
 const char *operations[] = {"mov", "cmp", "add", "sub", "lea", "clr", "not", "inc", "dec", "jmp", "bne", "jsr", "red", "prn", "rts", "stop"};
 const char *directives[] = {".data", ".string", ".entry", ".extern"};
@@ -73,6 +73,7 @@ void expand_macros(char *buffer, long inputFileSize, char *filename) {
     /* initilize external variables */
     isError = 0;
     translateIndexes = (int *)malloc(numLinesUpperBound * sizeof(int));
+    macros = NULL;
 
     /* check if memory allocation failed */
     if(translateIndexes == NULL) {
@@ -99,10 +100,14 @@ void expand_macros(char *buffer, long inputFileSize, char *filename) {
 
     /* free dynamic memory */
     free(buffer);
+    free(inputFilename);
 
     /* close the output file and remove it if an error was found */
     fclose(outputFile);
-    if(isError) remove_file(filename, extendedInputExt);
+    if(isError) {
+        free(translateIndexes);
+        remove_file(filename, extendedInputExt);
+    }
 
 }
 

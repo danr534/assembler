@@ -1,6 +1,6 @@
 # Compiler Flags
 CC = gcc
-CFLAGS = -Wall -ansi -pedantic -std=c89 -Iinclude
+CFLAGS = -Wall -ansi -pedantic -std=c89 -Iinclude -g
 
 # Directories
 OBJ_DIR = obj

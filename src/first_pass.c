@@ -1,11 +1,11 @@
 #include "first_pass.h"
 
-int opCodes[] = {0, 1, 2, 2, 4, 5, 5, 5, 5, 9, 9, 9, 12, 13, 14, 15};
-int functs[] = {0, 0, 1, 2, 0, 1, 2, 3, 4, 1, 2, 3, 0, 0, 0, 0};
-char registers[][3] = {"r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7"};
+const int opCodes[] = {0, 1, 2, 2, 4, 5, 5, 5, 5, 9, 9, 9, 12, 13, 14, 15};
+const int functs[] = {0, 0, 1, 2, 0, 1, 2, 3, 4, 1, 2, 3, 0, 0, 0, 0};
+const char registers[][3] = {"r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7"};
 char codeImage[IMAGE_SIZE][7];
 char dataImage[IMAGE_SIZE][7];
-labelNode *labels = NULL; 
+labelNode *labels; 
 int ICF;
 int DCF;
 
@@ -31,17 +31,7 @@ void read_operation(char *fullInputName, int line, char *cursor, int op, int *IC
  * @param R flag that determines if the encoding is relocatable (always 0 for operation words).
  * @param E flag that determines if the encoding is external (always 0 for operation words).
  */
-void add_operation_word(int *ICPtr, int opcode, int source_addressing, int source_register, int target_addressing, int target_register, int funct, int A, int R, int E);
-
-/** 
- * Adds information word the code encoding buffer.
- * @param ICPtr pointer to IC.
- * @param content the word content.
- * @param A flag that determines if the encoding is absolute (always 1 for operation words).
- * @param R flag that determines if the encoding is relocatable (always 0 for operation words).
- * @param E flag that determines if the encoding is external (always 0 for operation words).
- */
-void add_information_word(int *ICPtr, long content, int A, int R, int E);
+void add_operation_word(int *ICPtr, const int opcode, int source_addressing, int source_register, int target_addressing, int target_register, const int funct, int A, int R, int E);
 
 /**
  * Decodes operation line with a single operand
@@ -72,12 +62,6 @@ long extract_immediate_value(char **cursorPtr, char *fullInputName, int line, ch
  */
 int is_valid_label(char **cursorPtr, char *fullInputName, int line);
 
-/**
- * Checks if the operand is a register.
- * @param cursorPtr pointer to the pointer to the operand in the line.
- * @return the number of the register (-1 if the operand is not a register).
- */
-int is_reg_operand(char **cursorPtr);
 
 /**
  * Decodes operation line with 2 operands.
@@ -109,8 +93,13 @@ void read_directive(char *fullInputName, int line, char *cursor, int directive, 
  */
 void read_label(char *fullInputName, int line, char *cursor, int *ICPtr, int *DCPtr);
 
+/**
+ * Adds ICF to the data labels values to seperate the data and code segments
+ */
+void update_data_labels();
 
-void first_pass(FILE *extendedInputFile, char *inputName) {
+
+void first_pass(FILE *extendedInputFile, char *inputName, char *outputName) {
     char *cursor = (char *)malloc(MAX_LINE_LENGTH * sizeof(char)); /* pointer of the current line */
     int counter = 1; /* line counter in the expanded input file */
     int IC = INITIAL_CODE_ADDRESS; /* counter of the code encoded words */
@@ -119,6 +108,8 @@ void first_pass(FILE *extendedInputFile, char *inputName) {
     int is_read; /* a boolean variable that is 1 if the line is already read and 0 otherwise */
     char *tmp; /* temporary pointer to check that the operation is not a prefix of a label */
     int i;
+    labels = NULL; /* initialize labels list */
+    
     
     /* iterate over each line in the expended input file and encode it */
     while(fgets(cursor, MAX_LINE_LENGTH, extendedInputFile) != NULL) {
@@ -150,18 +141,29 @@ void first_pass(FILE *extendedInputFile, char *inputName) {
         }
         counter++;
     }
-
-    /* free the macro list */
-    free_macros_list(macros);
-
-    /* set the file pointer to the beginning of the file */
-    rewind(extendedInputFile);
     
+    /* free the dynamic memory */
+    free_macros_list(macros);
+    free(cursor);
+    free(fullInputName);
+
     /* set ICF and DCF */
     ICF = IC;
     DCF = DC;
 
+    /* add ICF to the data lables values */
+    update_data_labels();
+
+    /* handle error */
+    if(isError) {
+        free(translateIndexes);
+        fclose(extendedInputFile);
+        remove_file(outputName, extendedInputExt);
+    }
+
 }
+
+
 
 void read_operation(char *fullInputName, int line, char *cursor, int op, int *ICPtr) {
     
@@ -190,7 +192,7 @@ void read_operation(char *fullInputName, int line, char *cursor, int op, int *IC
     while(*cursor == ' ' || *cursor == '\t') cursor++;
     
     
-    /* check for one operand operations */
+    /* handle one operand operations */
     if(op == clr || op == not || op == inc || op == dec || op == jmp || op == bne || op == jsr || op == red || op == prn) {
         decode_single_operand_operation(cursor, fullInputName, line, operations[op], op, ICPtr);
     }
@@ -201,7 +203,7 @@ void read_operation(char *fullInputName, int line, char *cursor, int op, int *IC
     }
 }
 
-void add_operation_word(int *ICPtr, int opcode, int source_addressing, int source_register, int target_addressing, int target_register, int funct, int A, int R, int E) {
+void add_operation_word(int *ICPtr, const int opcode, int source_addressing, int source_register, int target_addressing, int target_register, const int funct, int A, int R, int E) {
     
     /* create the operation word with the given arguments as a 32 bit int */
     uint32_t word_value = 0;
@@ -219,33 +221,17 @@ void add_operation_word(int *ICPtr, int opcode, int source_addressing, int sourc
     word_value &= 0xFFFFFF;
 
     /* convert to word to hex string and save it in the code buffer */
-    sprintf(codeImage[RELATIVE_IC(*ICPtr)], "%06X", word_value);
-    printf("Operation: %s\n", codeImage[RELATIVE_IC(*ICPtr)]);
+    sprintf(codeImage[RELATIVE_IC(*ICPtr)], "%06x", word_value);
     (*ICPtr)++;
 }
 
-void add_information_word(int *ICPtr, long content, int A, int R, int E) {
 
-    /* create the information word with the given arguments as a 32 bit int */
-    uint32_t word_value = 0;
-    word_value |= content << 3;
-    word_value |= A << 2;
-    word_value |= R << 1;
-    word_value |= E;
-
-    /* make sure the word fits in 24 bits */
-    word_value &= 0xFFFFFF;
-
-    /* convert to word to hex string and save it in the code buffer */
-    sprintf(codeImage[RELATIVE_IC(*ICPtr)], "%06X", word_value); 
-    printf("Information: %6s\n", codeImage[RELATIVE_IC(*ICPtr)]);
-    (*ICPtr)++;
-}
 
 void decode_single_operand_operation(char *cursor, char *fullInputName, int line, const char *operation, int op, int *ICPtr) {
     long immediate_value; /* the immediate value of the operand (if exists) */
     int reg; /* the register number of the operand (if exists) */
-
+    int oldError = isError; /* save isError value */
+    
     /* check for missing operand */
     if(*cursor == '\n' || *cursor == '\0') {
         fprintf(stderr, "Error in file '%s' at line %d: missing operand, the operation '%s' requires exactly one operand.\n", fullInputName, line, operation);
@@ -255,6 +241,9 @@ void decode_single_operand_operation(char *cursor, char *fullInputName, int line
 
     /* handle immediate value operand */
     else if(*cursor == '#') {
+        /* remove previous errors to check for extra operands*/
+        isError = 0;
+
         /* check if the operation is compatible with immediate value operand */
         if(op != prn) {
             fprintf(stderr, "Error in file '%s' at line %d: illegal operand type, the operation '%s' does not accept operand in immediate addressing.\n", fullInputName, line, operation);
@@ -277,6 +266,9 @@ void decode_single_operand_operation(char *cursor, char *fullInputName, int line
         /* add the operation word and information word of the operand to the code buffer */
         add_operation_word(ICPtr, opCodes[op], 0, 0, immediate, 0, functs[op], 1, 0, 0); 
         add_information_word(ICPtr, immediate_value, 1, 0, 0);
+
+        /* restore the previous error if exists */
+        if(!isError) isError = oldError;
     }
 
     /* handle operand in relative addressing */
@@ -354,6 +346,23 @@ void decode_single_operand_operation(char *cursor, char *fullInputName, int line
         add_operation_word(ICPtr, opCodes[op], 0, 0, direct, 0, functs[op], 1, 0, 0);
         (*ICPtr)++;
     }
+}
+
+void add_information_word(int *ICPtr, long content, int A, int R, int E) {
+
+    /* create the information word with the given arguments as a 32 bit int */
+    uint32_t word_value = 0;
+    word_value |= content << 3;
+    word_value |= A << 2;
+    word_value |= R << 1;
+    word_value |= E;
+
+    /* make sure the word fits in 24 bits */
+    word_value &= 0xFFFFFF;
+
+    /* convert to word to hex string and save it in the code buffer */
+    sprintf(codeImage[RELATIVE_IC(*ICPtr)], "%06x", word_value); 
+    (*ICPtr)++;
 }
 
 long extract_immediate_value(char **cursorPtr, char *fullInputName, int line, char *type) {
@@ -499,6 +508,7 @@ void decode_two_operands_operation(char *cursor, char *fullInputName, int line, 
     int source_addressing; /* the source addressing method */
     int target_reg; /* the target operand register number (if exists) */
     char *commaPtr = cursor; /* pointer to the comma in the line between the operands */
+    int oldError = isError; /* save isError value */
 
     
     /* find the comma in the line and replace it with a blank */
@@ -521,6 +531,8 @@ void decode_two_operands_operation(char *cursor, char *fullInputName, int line, 
 
     /* handle immediate value source operand */
     else if(*cursor == '#') {
+        /* remove previous errors to check for comma erros or errors in the second operand*/
+        isError = 0;
 
         /* check if the operation is compatible with immediate value source operand */
         if(op == lea) {
@@ -537,6 +549,8 @@ void decode_two_operands_operation(char *cursor, char *fullInputName, int line, 
         source_reg = 0;
         source_addressing = immediate;
 
+        /* restore the previous error if exists */
+        if(!isError) isError = oldError;
     }
 
     /* handle register source operand */
@@ -584,6 +598,8 @@ void decode_two_operands_operation(char *cursor, char *fullInputName, int line, 
 
     /* handle immediate value target operand */
     else if(*cursor == '#') {
+        /* remove previous errors to check for extra operands*/
+        isError = 0;
 
         /* check if the operation is compatible with immediate value target operand */
         if(op != cmp) {
@@ -610,6 +626,9 @@ void decode_two_operands_operation(char *cursor, char *fullInputName, int line, 
         if(source_addressing == immediate) add_information_word(ICPtr, source_immediate_value, 1, 0, 0);
         else if(source_addressing == direct) (*ICPtr)++;
         add_information_word(ICPtr, target_immediate_value, 1, 0, 0);
+
+        /* restore the previous error if exists */
+        if(!isError) isError = oldError;
     }
 
     /* handle register target operand */
@@ -662,6 +681,7 @@ void read_directive(char *fullInputName, int line, char *cursor, int directive, 
     char *endLabel; /* pointer to the end of the label */
     int labelLength; /* the length of the label including null pointer */
     char *label = NULL; /* the label name */
+    int oldError = isError; /* save isError value */
 
     cursor += strlen(directives[directive]);
     
@@ -676,6 +696,8 @@ void read_directive(char *fullInputName, int line, char *cursor, int directive, 
 
     /* handle data directive */
     if(directive == data) {
+        /* remove previous errors to check for errors later in the line */
+        isError = 0;
         do {
 
             /* find the comma in the line and replace it with a blank */
@@ -699,12 +721,14 @@ void read_directive(char *fullInputName, int line, char *cursor, int directive, 
             immediate_number &= 0xFFFFFF;
 
             /* convert to word to hex string and save it in the data buffer */
-            sprintf(dataImage[*DCPtr], "%06X", immediate_number);
-            printf("Data: %s\n", dataImage[*DCPtr]);
+            sprintf(dataImage[*DCPtr], "%06x", immediate_number);
             
             (*DCPtr)++;
         }
         while(*commaPtr != '\n' && *commaPtr != '\0');
+
+         /* restore the previous error if exists */
+        if(!isError) isError = oldError;
     }
 
     /* handle string directive*/
@@ -720,15 +744,13 @@ void read_directive(char *fullInputName, int line, char *cursor, int directive, 
 
         /* iterate over each character and store it in the data buffer */
         while(*cursor != '"' && *cursor != '\n' && *cursor != '\0') {
-            sprintf(dataImage[*DCPtr], "%06X", *cursor);
-            printf("String: %s\n", dataImage[*DCPtr]);
+            sprintf(dataImage[*DCPtr], "%06x", *cursor);
             (*DCPtr)++;
             cursor++;
         }
 
         /* store a null terminator in the data buffer*/
-        sprintf(dataImage[*DCPtr], "%06X", '\0');
-        printf("String: %s\n", dataImage[*DCPtr]);
+        sprintf(dataImage[*DCPtr], "%06x", '\0');
         (*DCPtr)++;
 
         /* check for ending quotion mark*/
@@ -762,6 +784,7 @@ void read_directive(char *fullInputName, int line, char *cursor, int directive, 
 
         /* handle extern directive */
         if(directive == extrn) {
+            
             /* copy the label name into label */
             labelLength = endLabel - cursor + 1;
             label = (char *)malloc((labelLength) * sizeof(char));
@@ -798,7 +821,7 @@ void read_label(char *fullInputName, int line, char *cursor, int *ICPtr, int *DC
     int labelLength; /* length of the label including null terminator */
     char *label = NULL; /* label name */
     int i;
-
+    
     /* check that the colon exists*/
     if(colonPtr == NULL) {
         fprintf(stderr, "Error in file '%s' at line %d: missing colon after label decleration .\n", fullInputName, line);
@@ -829,7 +852,6 @@ void read_label(char *fullInputName, int line, char *cursor, int *ICPtr, int *DC
     label = (char *)malloc((labelLength) * sizeof(char));
     strncpy(label, cursor, labelLength);
 
-    printf("label: %s\n", label);
     /* check if the label is already declared */
     if(search_label(labels, label) != NULL) {
         fprintf(stderr, "Error in file '%s' at line %d: the label '%s' is already declared.\n", fullInputName, line, label);
@@ -865,11 +887,19 @@ void read_label(char *fullInputName, int line, char *cursor, int *ICPtr, int *DC
         read_directive(fullInputName, line, cursor, string, DCPtr);
     }
 
-    /* handle missing operation or directive after label decleration */
+    /* handle invalid operation or directive after label decleration */
     else {
-        fprintf(stderr, "Error in file '%s' at line %d: missing operation or directive after label decleration.\n", fullInputName, line);
+        fprintf(stderr, "Error in file '%s' at line %d: invalid operation or directive after label decleration.\n", fullInputName, line);
         isError = 1;
     }
 
 
+}
+
+void update_data_labels() {
+    labelNode *label = labels;
+    while(label != NULL) {
+        if(label->type == _data) label->value += ICF;
+        label = label->next;
+    }
 }

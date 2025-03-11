@@ -2,6 +2,9 @@
 
 char *inputExt = ".as";
 char *extendedInputExt = ".am";
+char *objExt = ".ob";
+char *entryExt = ".ent";
+char *externalExt = ".ext";
 char *readMode = "r";
 char *writeMode = "w";
 

@@ -8,6 +8,9 @@
 
 extern char *inputExt; /* file extension for input files */
 extern char *extendedInputExt; /* file extension for extended input files */
+extern char *objExt; /* file extension for obj files */
+extern char *entryExt; /* file extension for entry files */
+extern char *externalExt; /* file extension for external files */
 extern char *readMode; /* flag to open file in read mode */
 extern char *writeMode; /* flag to topen file in write mode */
 

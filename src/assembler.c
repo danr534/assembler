@@ -2,6 +2,7 @@
 #include "pre_assembler.h"
 #include "utils.h"
 #include "globals.h"
+#include "second_pass.h"
 
 int main(int argc, char *argv[]) {
     int currentIndex; /* the index of the current assembly file */
@@ -12,6 +13,7 @@ int main(int argc, char *argv[]) {
     long inputFileSize; /* the size of the input file in bytes */
     FILE *extendedInputFile;
 
+    
     /* check that there is at least one command line argument */
     if(argc < 2) {
         fprintf(stderr, "Error: Missing command line argument, please enter at least one assembly file.\n");
@@ -35,8 +37,19 @@ int main(int argc, char *argv[]) {
         expand_macros(buffer, inputFileSize, outputName);
         if(isError) continue;
 
+        /* run first pass */
         extendedInputFile = open_file(outputName, extendedInputExt, readMode);
-        first_pass(extendedInputFile, inputName);
+        first_pass(extendedInputFile, inputName, outputName);
+        if(isError) continue;
+
+
+         /* set the file pointer to the beginning of the file */
+        rewind(extendedInputFile);
+        second_pass(extendedInputFile, inputName, outputName);
+
+        /* free dynamic memory */
+        free(inputName);
+        free(outputName);
     }
 
     return 0;

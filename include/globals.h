@@ -13,8 +13,8 @@
 #define NUM_REGISTERS 8 /* number of registers */
 #define INT21_MAX (1048575)   /*  2^20 - 1 */
 #define INT21_MIN (-1048576)  /* -2^20 */
-#define INT24_MAX (16777215) /* 2^24 - 1 */
-#define INT24_MIN (-16777216) /* -2^24 */
+#define INT24_MAX (8388607) /* 2^23 - 1 */
+#define INT24_MIN (-8388608) /* -2^23 */
 #define RELATIVE_IC(IC) (IC - INITIAL_CODE_ADDRESS) /* relative code address in respect to the initial code address */
 
 /* valid operations names */

@@ -1,3 +1,6 @@
+#ifndef LABELS_H
+#define LABELS_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,3 +45,4 @@ labelNode *search_label(labelNode *head, char *name);
  */
 void free_labels_list(labelNode *head);
 
+#endif
