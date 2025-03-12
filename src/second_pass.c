@@ -196,8 +196,10 @@ void encode_operation(FILE *objFile, FILE *extFile, char *fullInputName, int lin
 }
 
 void encode_single_operand_operation(FILE *objFile, FILE *extFile, char *cursor, char *fullInputName, int line, const char *operation, int op, int *ICPtr) {
-    labelNode *label = NULL;
-    long jumpDist;
+    labelNode *label = NULL; /* temporary label */
+    long jumpDist; /* relative distance for relative addressing */
+
+    /* remove comma */
     strtok(cursor, ",");
 
     /* skip immediate value operation word */
@@ -222,6 +224,13 @@ void encode_single_operand_operation(FILE *objFile, FILE *extFile, char *cursor,
             return;
         }
 
+        /* check that the operand label is not an undefined entry label */
+        if(label->type == _unidentified_entry) {
+            fprintf(stderr, "Error in file '%s' at line %d: the entry label '%s' is not defined.\n", fullInputName, line, strtok(cursor, " \t\n"));
+            isError = 1;
+            return;
+        }
+
         /* add information word to the code buffer */
         jumpDist = label->value - *ICPtr + 1;
         add_information_word(ICPtr, jumpDist, 1, 0, 0);
@@ -234,6 +243,13 @@ void encode_single_operand_operation(FILE *objFile, FILE *extFile, char *cursor,
         /* check if the operand label exists */
         if((label = search_label(labels, cursor)) == NULL) {
             fprintf(stderr, "Error in file '%s' at line %d: the label '%s' isn't defined.\n", fullInputName, line, strtok(cursor, " \t\n"));
+            isError = 1;
+            return;
+        }
+
+        /* check that the operand label is not an undefined entry label */
+        if(label->type == _unidentified_entry) {
+            fprintf(stderr, "Error in file '%s' at line %d: the entry label '%s' is not defined.\n", fullInputName, line, strtok(cursor, " \t\n"));
             isError = 1;
             return;
         }
@@ -280,36 +296,20 @@ void encode_two_operands_operation(FILE *objFile, FILE *extFile, char *cursor, c
 
 void encode_directive(FILE *entFile, FILE *extFile, char *fullInputName, int line, char *cursor, int directive) {
 
-    labelNode *label = NULL;
+    labelNode *label = NULL; /* temporary label */
+    
     cursor += strlen(directives[directive]);
     while(*cursor == ' ' || *cursor == '\t') cursor++;
 
     /* handle entry directive */
     if(directive == entry) {
+        label = search_label(labels, cursor);
+
         /* check the label is defined */
-        if((label = search_label(labels, cursor)) == NULL) {
-            fprintf(stderr, "Error in file '%s' at line %d: the entry label '%s' is not defined.", fullInputName, line, strtok(cursor, " \t\n"));
+        if(label->type == _unidentified_entry) {
+            fprintf(stderr, "Error in file '%s' at line %d: the entry label '%s' is not defined.\n", fullInputName, line, strtok(cursor, " \t\n"));
             isError = 1;
             return;
-        }
-
-        /* check that the label is not an external label */
-        else if(label->type == _external) {
-            fprintf(stderr, "Error in file '%s' at line %d: the label '%s' is an external label and it can't also be an entry label.\n", fullInputName, line, strtok(cursor, " \t\n"));
-            isError = 1;
-            return;
-        }
-
-        /* handle code label */
-        if(label->type == _code) label->type = _code_entry;
-
-        /* handle data label */
-        else if(label->type == _data) label->type = _data_entry;
-
-        /* check that the label isn't declared as entry more than one time */
-        else {
-            fprintf(stderr, "Error in file '%s' at line %d: the label '%s' is already declared as an entry label.\n", fullInputName, line, strtok(cursor, " \t\n"));
-            isError = 1;
         }
 
     }

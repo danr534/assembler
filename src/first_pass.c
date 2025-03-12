@@ -680,7 +680,8 @@ void read_directive(char *fullInputName, int line, char *cursor, int directive, 
     char *tmp; /* temporary pointer */
     char *endLabel; /* pointer to the end of the label */
     int labelLength; /* the length of the label including null pointer */
-    char *label = NULL; /* the label name */
+    char *labelName = NULL; /* the label name */
+    labelNode *label = NULL; /* a temporary label */
     int oldError = isError; /* save isError value */
 
     cursor += strlen(directives[directive]);
@@ -781,25 +782,34 @@ void read_directive(char *fullInputName, int line, char *cursor, int directive, 
             isError = 1;
             return;
         }
-
-        /* handle extern directive */
-        if(directive == extrn) {
             
-            /* copy the label name into label */
-            labelLength = endLabel - cursor + 1;
-            label = (char *)malloc((labelLength) * sizeof(char));
-            strncpy(label, cursor, labelLength);
-            
-            /* check if the label is already declared */
-            if(search_label(labels, label) != NULL) {
-                fprintf(stderr, "Error in file '%s' at line %d: the label '%s' is already declared.\n", fullInputName, line, label);
-                isError = 1;
-                return;
-            }
-
-            /* add the label the labels list */
-            append_label(&labels, label, 0, _external);
+        /* copy the label name into label */
+        labelLength = endLabel - cursor + 1;
+        labelName = (char *)malloc((labelLength) * sizeof(char));
+        strncpy(labelName, cursor, labelLength);
+        
+        label = search_label(labels, labelName);
+        /* check if the label is already declared and it's invalid to declare it again */
+        if(label != NULL && (directive == extrn || (label->type != _code && label->type != _data))) {
+            fprintf(stderr, "Error in file '%s' at line %d: the label '%s' is already declared.\n", fullInputName, line, labelName);
+            isError = 1;
+            return;
         }
+
+        /* handle entry directive */
+        if(directive == entry) {
+
+            /* if label is not defined add it to the labels list, otherwise update the type to include entry */
+            if(label == NULL) append_label(&labels, labelName, 0, _unidentified_entry);
+            else {
+                if(label->type == _code) label->type = _code_entry;
+                else label->type = _data_entry;
+            }
+        }
+
+        /* add the label if its an external label */
+        else append_label(&labels, labelName, 0, _external);
+        
         
         cursor = tmp;
         /* check for extra operands */
@@ -819,7 +829,8 @@ void read_label(char *fullInputName, int line, char *cursor, int *ICPtr, int *DC
     char *colonPtr = strchr(cursor, ':'); /* ptr to the colon after the label decleration */
     char *tmp = cursor; /* temporary cursor for the function is_valid_label() */
     int labelLength; /* length of the label including null terminator */
-    char *label = NULL; /* label name */
+    char *labelName = NULL; /* label name */
+    labelNode *label = NULL; /* temporary label */
     int i;
     
     /* check that the colon exists*/
@@ -849,12 +860,13 @@ void read_label(char *fullInputName, int line, char *cursor, int *ICPtr, int *DC
 
     /* copy the label name into label */
     labelLength = colonPtr - cursor + 1;
-    label = (char *)malloc((labelLength) * sizeof(char));
-    strncpy(label, cursor, labelLength);
+    labelName = (char *)malloc((labelLength) * sizeof(char));
+    strncpy(labelName, cursor, labelLength);
 
+    label = search_label(labels, labelName);
     /* check if the label is already declared */
-    if(search_label(labels, label) != NULL) {
-        fprintf(stderr, "Error in file '%s' at line %d: the label '%s' is already declared.\n", fullInputName, line, label);
+    if(label != NULL && label->type != _unidentified_entry) {
+        fprintf(stderr, "Error in file '%s' at line %d: the label '%s' is already declared.\n", fullInputName, line, labelName);
         isError = 1;
         return;
     }
@@ -868,7 +880,14 @@ void read_label(char *fullInputName, int line, char *cursor, int *ICPtr, int *DC
             tmp = cursor + strlen(operations[i]);
             /* check if the operation is not a prefix of a label */
             if(*tmp == ' ' || *tmp == '\t' || *tmp == '\n' || *tmp == '\0') {
-                append_label(&labels, label, *ICPtr, _code);
+                /* if the label is entry*/
+                if(label != NULL) {
+                    label->type = _code_entry;
+                    label->value = *ICPtr;
+                }
+                else append_label(&labels, labelName, *ICPtr, _code);
+
+                /* read the rest of the line */
                 read_operation(fullInputName, line, cursor, i, ICPtr);
                 return;
             }   
@@ -877,13 +896,23 @@ void read_label(char *fullInputName, int line, char *cursor, int *ICPtr, int *DC
 
     /* check if the label is a data directive label */
     if(!strncmp(cursor, directives[data], strlen(directives[data]))) {
-        append_label(&labels, label, *DCPtr, _data);
+        /* if the label is entry*/
+        if(label != NULL) {
+            label->type = _data_entry;
+            label->value = *DCPtr;
+        }
+        else append_label(&labels, labelName, *DCPtr, _data);
         read_directive(fullInputName, line, cursor, data, DCPtr);
     }
 
     /* check if the label is a string directive label */
     else if(!strncmp(cursor, directives[string], strlen(directives[string]))) {
-        append_label(&labels, label, *DCPtr, _data);
+         /* if the label is entry*/
+         if(label != NULL) {
+            label->type = _data_entry;
+            label->value = *DCPtr;
+        }
+        else append_label(&labels, labelName, *DCPtr, _data);
         read_directive(fullInputName, line, cursor, string, DCPtr);
     }
 
@@ -899,7 +928,7 @@ void read_label(char *fullInputName, int line, char *cursor, int *ICPtr, int *DC
 void update_data_labels() {
     labelNode *label = labels;
     while(label != NULL) {
-        if(label->type == _data) label->value += ICF;
+        if(label->type == _data || label->type == _data_entry) label->value += ICF;
         label = label->next;
     }
 }

@@ -1,5 +1,13 @@
+.extern A
+
 ; Invalid target operand type
-A: lea B, #2
+lea B, #2
+
+; A is already an external label and can't be an entry label as well
+.entry A
+
+; A is already defined
+A: add r1, r2
 
 ; Comma not between the operands
 B: add ,r1 r3  
@@ -47,4 +55,7 @@ G: .data -8388609
 .data 10, -20, r
 
 ; missing space after .data
-H: .data55  
+H: .data55
+
+; label name can't be an operation name
+stop: bne F

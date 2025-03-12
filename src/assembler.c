@@ -11,7 +11,7 @@ int main(int argc, char *argv[]) {
     char *outputName; /* the name of the current output files (without extensions)*/
     FILE *inputFile; /* current assembly file pointer */
     long inputFileSize; /* the size of the input file in bytes */
-    FILE *extendedInputFile;
+    FILE *extendedInputFile; /* extended input file pointer */
 
     
     /* check that there is at least one command line argument */

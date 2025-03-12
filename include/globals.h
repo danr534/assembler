@@ -27,7 +27,7 @@ enum DIRECTIVES {data, string, entry, extrn};
 enum ADDRESSING_METHODS {immediate, direct, relative, direct_register};
 
 /* label types */
-enum LABEL_TYPES {_code, _data, _code_entry, _data_entry, _external};
+enum LABEL_TYPES {_code, _data, _code_entry, _data_entry, _external, _unidentified_entry};
 
 
 #endif
